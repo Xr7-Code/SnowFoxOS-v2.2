@@ -195,6 +195,26 @@ if lsusb 2>/dev/null | grep -qi "fritz\|0x0bda\|2357"; then
         warn "Fritz USB Treiber nicht gefunden — nach Reboot prüfen"
 fi
 
+# USB-WLAN Power-Management deaktiviert lassen — verhindert hängende
+# Verbindungen bei USB-WLAN-Adaptern (z.B. Fritz AC 860) durch Autosuspend
+cat > /etc/udev/rules.d/70-usb-wlan-power.rules << 'EOF'
+ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="057c", ATTR{power/control}="on"
+ACTION=="add", SUBSYSTEM=="usb", DRIVER=="mt76x2u", ATTR{power/control}="on"
+EOF
+success "USB-WLAN Autosuspend-Fix installiert"
+
+# RTL8821CE (HP-Laptops u.a.) — bekannter Stromspar-Bug der Verbindungen
+# instabil macht / DHCP fehlschlagen lässt. Fix: tiefen Stromsparmodus
+# und ASPM für diesen Chip deaktivieren.
+if lspci -k 2>/dev/null | grep -qi "RTL8821CE"; then
+    info "RTL8821CE WLAN-Chip erkannt — wende Stabilitäts-Fix an..."
+    cat > /etc/modprobe.d/rtw88.conf << 'EOF'
+options rtw88_core disable_lps_deep=y
+options rtw88_pci disable_aspm=y
+EOF
+    success "RTL8821CE Stabilitäts-Fix installiert (disable_lps_deep, disable_aspm)"
+fi
+
 # ============================================================
 # SCHRITT 2 — Hardware-Erkennung & Treiber
 # ============================================================
