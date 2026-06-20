@@ -1,0 +1,89 @@
+/* ============================================================
+   SnowFoxOS — Rofi Theme
+   ============================================================ */
+
+configuration {
+    modi:        "drun,run";
+    show-icons:  false;
+    icon-theme:  "Papirus-Dark";
+}
+
+* {
+    font:             "Inter 11";
+    bg:               #0d0d0d;
+    bg-alt:           #161616;
+    fg:               #e8e8e8;
+    fg-alt:           #888888;
+    purple:           #9B59B6;
+    orange:           #E67E22;
+    border-color:     rgba(155, 89, 182, 0.5);
+    background-color: transparent;
+}
+
+window {
+    background-color: @bg;
+    border:           1px solid;
+    border-color:     @border-color;
+    border-radius:    8px;
+    width:            500px;
+    padding:          8px;
+}
+
+mainbox {
+    background-color: transparent;
+    children: [inputbar, listview];
+}
+
+inputbar {
+    background-color: @bg-alt;
+    border-radius:    6px;
+    padding:          8px 12px;
+    margin:           0 0 8px 0;
+    children:         [prompt, entry];
+}
+
+prompt {
+    background-color: transparent;
+    text-color:       @purple;
+    padding:          0 8px 0 0;
+}
+
+entry {
+    background-color: transparent;
+    text-color:       @fg;
+    placeholder:      "Suchen...";
+    placeholder-color: @fg-alt;
+}
+
+listview {
+    background-color: transparent;
+    lines:            8;
+    spacing:          4px;
+}
+
+element {
+    background-color: transparent;
+    border-radius:    6px;
+    padding:          6px 8px;
+}
+
+element selected {
+    background-color: rgba(155, 89, 182, 0.2);
+    border:           1px solid;
+    border-color:     rgba(155, 89, 182, 0.4);
+}
+
+element-icon {
+    size:   22px;
+    margin: 0 8px 0 0;
+}
+
+element-text {
+    background-color: transparent;
+    text-color:       @fg;
+    vertical-align:   0.5;
+}
+
+element selected element-text {
+    text-color: @fg;
+}
