@@ -206,14 +206,14 @@ success "USB-WLAN Autosuspend-Fix installiert"
 # RTL8821CE (HP-Laptops u.a.) — bekannter Stromspar-Bug der Verbindungen
 # instabil macht / DHCP fehlschlagen lässt. Fix: tiefen Stromsparmodus
 # und ASPM für diesen Chip deaktivieren.
-# if lspci -k 2>/dev/null | grep -qi "RTL8821CE"; then
-#     info "RTL8821CE WLAN-Chip erkannt — wende Stabilitäts-Fix an..."
-#     cat > /etc/modprobe.d/rtw88.conf << 'EOF'
-# options rtw88_core disable_lps_deep=y
-# options rtw88_pci disable_aspm=y
-# EOF
-#     success "RTL8821CE Stabilitäts-Fix installiert (disable_lps_deep, disable_aspm)"
-# fi
+if lspci -k 2>/dev/null | grep -qi "RTL8821CE"; then
+    info "RTL8821CE WLAN-Chip erkannt — wende Stabilitäts-Fix an..."
+    cat > /etc/modprobe.d/rtw88.conf << 'EOF'
+options rtw88_core disable_lps_deep=y
+options rtw88_pci disable_aspm=y
+EOF
+    success "RTL8821CE Stabilitäts-Fix installiert (disable_lps_deep, disable_aspm)"
+fi
 
 # ============================================================
 # SCHRITT 2 — Hardware-Erkennung & Treiber
