@@ -1,0 +1,10 @@
+@define-color selected_bg_color #8139e8;
+@define-color selected_fg_color #cdd6f4;
+@define-color theme_bg_color #1e1e2e;
+@define-color theme_fg_color #cdd6f4;
+@define-color theme_base_color #252538;
+@define-color theme_text_color #cdd6f4;
+/* Abgerundete Ecken für alle GTK-Widgets erzwingen */
+button, entry, menu, dialog {
+border-radius: 5px !important;
+}
