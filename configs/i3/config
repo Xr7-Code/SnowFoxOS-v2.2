@@ -1,32 +1,34 @@
 # ============================================================
-#  SnowFoxOS v2.1 — i3 Konfiguration
+#   SnowFoxOS v2.1 — i3 Konfiguration (SnowFox Palette)
 # ============================================================
 
 set $mod Mod4
 set $term kitty
 
-# ── Farben ──────────────────────────────────────────────────
-set $purple   #9B59B6
-set $orange   #E67E22
-set $bg       #0d0d0d
-set $bg2      #161616
-set $fg       #e8e8e8
-set $gray     #3a3a3a
-set $inactive #2a2a2a
+# ── Farben (Exakt nach Canva-Design) ────────────────────────
+set $purple   #8139e8
+set $bg       #1e1e2e
+set $bg2      #252538
+set $fg       #cdd6f4
+set $gray     #6c7086
+set $orange   #ff79c6
 
 # ── Schrift ─────────────────────────────────────────────────
-font pango:Inter 11
+font pango:JetBrainsMono Nerd Font 10
 
 # ── Fenster-Dekoration ──────────────────────────────────────
-client.focused            $purple   $bg2      $fg   $orange   $purple
-client.focused_inactive   $gray     $bg       $fg   $gray     $gray
-client.unfocused          $inactive $bg       $fg   $inactive $inactive
-client.urgent             $orange   $bg2      $fg   $orange   $orange
+# class                 border  backgr. text    indicator child_border
+client.focused          $purple $purple $fg     $purple   $purple
+client.focused_inactive $bg2    $bg     $gray   $bg2      $bg2
+client.unfocused        $bg2    $bg     $gray   $bg2      $bg2
+client.urgent           $orange $bg2    $fg     $orange   $orange
 
 default_border pixel 2
 default_floating_border pixel 2
-gaps inner 4
-gaps outer 2
+
+# Gaps für den schwebenden Look mit abgerundeten Ecken erhöht
+gaps inner 10
+gaps outer 5
 smart_gaps on
 smart_borders on
 
@@ -39,8 +41,8 @@ exec --no-startup-id lxpolkit
 exec --no-startup-id xsettingsd
 exec --no-startup-id nm-applet --no-agent
 exec --no-startup-id redshift
-exec --no-startup-id diodon
-exec --no-startup-id xss-lock --transfer-sleep-lock -- i3lock --nofork -c 0d0d0d
+# exec --no-startup-id diodon # Deaktiviert wegen Systembereinigung
+exec --no-startup-id xss-lock --transfer-sleep-lock -- i3lock --nofork -c 1e1e2e
 
 # ── Keyboard Shortcuts ──────────────────────────────────────
 bindsym $mod+Return exec $term
@@ -49,7 +51,7 @@ bindsym $mod+Tab    exec rofi -show window -theme ~/.config/rofi/config.rasi
 bindsym $mod+e      exec thunar
 bindsym $mod+n      exec ~/.config/snowfox-network.sh
 bindsym $mod+w      exec ~/.config/snowfox-wallpaper.sh
-bindsym $mod+l      exec i3lock -c 0d0d0d
+bindsym $mod+l      exec i3lock -c 1e1e2e
 bindsym $mod+p      exec ~/.config/snowfox-display.sh
 
 bindsym Print exec scrot ~/Pictures/screenshot_%Y%m%d_%H%M%S.png && \
@@ -68,7 +70,7 @@ bindsym XF86AudioPlay  exec playerctl play-pause
 bindsym XF86AudioNext  exec playerctl next
 bindsym XF86AudioPrev  exec playerctl previous
 
-bindsym $mod+q       kill
+bindsym $mod+q        kill
 bindsym $mod+Shift+r reload
 bindsym $mod+Shift+e exec ~/.config/powermenu.sh
 bindsym XF86PowerOff exec --no-startup-id ~/.config/powermenu.sh
@@ -91,7 +93,7 @@ bindsym $mod+s layout stacking
 bindsym $mod+t layout toggle split
 
 bindsym $mod+Shift+space floating toggle
-bindsym $mod+d           focus mode_toggle
+bindsym $mod+d            focus mode_toggle
 floating_modifier $mod
 
 # ── Workspaces ──────────────────────────────────────────────
