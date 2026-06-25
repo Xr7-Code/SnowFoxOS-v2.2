@@ -19,7 +19,7 @@
     horizontal_padding     = 12
     text_icon_padding      = 8
     frame_width            = 1
-    frame_color            = "#9B59B6"
+    frame_color            = "#8139e8"
     separator_color        = frame
     sort                   = yes
     font                   = Inter 11
@@ -56,19 +56,19 @@
     per_monitor_dpi = false
 
 [urgency_low]
-    background  = "#0d0d0d"
+    background  = "#1e1e2e"
     foreground  = "#888888"
     frame_color = "#2a2a2a"
     timeout     = 4
 
 [urgency_normal]
-    background  = "#0d0d0d"
+    background  = "#1e1e2e"
     foreground  = "#e8e8e8"
     frame_color = "#9B59B6"
     timeout     = 6
 
 [urgency_critical]
-    background  = "#161616"
+    background  = "#1e1e2e"
     foreground  = "#e8e8e8"
     frame_color = "#E67E22"
     timeout     = 0
