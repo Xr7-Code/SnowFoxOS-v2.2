@@ -349,7 +349,6 @@ step "3/10 — i3 + Polybar + Rofi + Dunst + i3lock"
 wait_apt
 apt-get install -y \
     i3 \
-    i3status \
     i3lock \
     polybar \
     rofi \
@@ -358,7 +357,6 @@ apt-get install -y \
     libappindicator3-1 \
     libayatana-appindicator3-1 \
     feh \
-    xdg-desktop-portal \
     libdbusmenu-gtk3-4 \
     redshift \
     scrot \
@@ -369,19 +367,15 @@ apt-get install -y \
     fonts-inter \
     fonts-noto \
     fonts-noto-color-emoji \
-    fonts-font-awesome \
-    fonts-jetbrains-mono \
     papirus-icon-theme \
     arc-theme \
-    qt5ct qt6ct \
-    qt5-style-plugins \
+    qt5-style-kvantum \
     xsettingsd \
     lxpolkit \
     lxappearance \
     picom \
     xss-lock \
     xserver-xorg-input-libinput \
-    diodon \
     cups cups-bsd cups-client \
     printer-driver-splix
 
