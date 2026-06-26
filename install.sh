@@ -37,17 +37,14 @@ wait_apt() {
     done
 }
 
-# ── Root-Check ───────────────────────────────────────────────
 if [[ $EUID -ne 0 ]]; then
     error "Bitte mit sudo ausführen: sudo bash install.sh"
 fi
 
-# ── Debian 12 Validierung ────────────────────────────────────
 if [[ ! -f /etc/debian_version ]] || ! grep -q "^12\." /etc/debian_version; then
     warn "Dieses Script ist für Debian 12 (Bookworm) optimiert."
 fi
 
-# ── Benutzer ermitteln ───────────────────────────────────────
 TARGET_USER="${SUDO_USER:-$(logname 2>/dev/null || echo '')}"
 if [[ -z "$TARGET_USER" || "$TARGET_USER" == "root" ]]; then
     read -rp "Benutzername: " TARGET_USER
@@ -59,12 +56,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 info "Installiere für: ${BOLD}$TARGET_USER${RESET}"
 sleep 1
 
-# ============================================================
-# SCHRITT 1 — System & Repositories
-# ============================================================
 step "1/10 — System aktualisieren"
 
-# DKMS-Hooks temporär deaktivieren
 DKMS_HOOKS=(
     /etc/kernel/postinst.d/dkms
     /etc/kernel/prerm.d/dkms
@@ -75,7 +68,6 @@ for hook in "${DKMS_HOOKS[@]}"; do
 done
 info "DKMS-Hooks für Installer-Lauf deaktiviert"
 
-# apt-daily deaktivieren — verhindert Boot-Verzögerungen und Lock-Konflikte
 systemctl disable apt-daily.service apt-daily.timer 2>/dev/null || true
 systemctl disable apt-daily-upgrade.service apt-daily-upgrade.timer 2>/dev/null || true
 systemctl stop apt-daily.service apt-daily-upgrade.service 2>/dev/null || true
@@ -126,7 +118,6 @@ apt-get install -y \
 sudo -u "$TARGET_USER" xdg-user-dirs-update
 success "System aktualisiert"
 
-# ── XanMod Kernel ────────────────────────────────────────────
 info "Prüfe CPU-Kompatibilität für x64v3..."
 if ! grep -q "avx2" /proc/cpuinfo; then
     error "CPU unterstützt kein AVX2 — Installation abgebrochen um System-Brick zu verhindern."
@@ -158,14 +149,12 @@ if [[ $XANMOD_EXIT -eq 0 ]]; then
     success "XanMod LTS Kernel installiert (aktiv nach Reboot)"
 
     if [[ -f /etc/default/grub ]]; then
-        # Kernel-Parameter je nach GPU-Konfiguration
         GRUB_PARAMS="quiet splash"
 
         if lspci | grep -qi nvidia; then
             GRUB_PARAMS="$GRUB_PARAMS nvidia-drm.modeset=1"
         fi
 
-        # AMD+NVIDIA Hybrid: IOMMU aktivieren verhindert DRM Fence Timeout Freezes
         if lspci | grep -qi nvidia && lspci | grep -qi amd; then
             GRUB_PARAMS="$GRUB_PARAMS amd_iommu=on iommu=pt"
             info "AMD+NVIDIA Hybrid erkannt: IOMMU-Parameter gesetzt (verhindert Freezes)"
@@ -175,7 +164,6 @@ if [[ $XANMOD_EXIT -eq 0 ]]; then
         sed -i 's/GRUB_TIMEOUT=.*/GRUB_TIMEOUT=1/' /etc/default/grub
     fi
 
-    # XanMod LTS als Standard setzen
     XANMOD_VER=$(ls /lib/modules 2>/dev/null | grep xanmod-lts 2>/dev/null | sort -V | tail -1)
     if [[ -n "$XANMOD_VER" ]]; then
         grub-set-default "Advanced options for SnowFoxOS GNU/Linux>SnowFoxOS GNU/Linux, with Linux $XANMOD_VER" 2>/dev/null || true
@@ -187,7 +175,6 @@ else
     warn "XanMod fehlgeschlagen (Exit $XANMOD_EXIT) — Installation wird fortgesetzt"
 fi
 
-# Fritz USB AC 860 Treiber
 apt-get install -y firmware-misc-nonfree 2>/dev/null || true
 if lsusb 2>/dev/null | grep -qi "fritz\|0x0bda\|2357"; then
     modprobe mt76x2u 2>/dev/null && \
@@ -195,17 +182,12 @@ if lsusb 2>/dev/null | grep -qi "fritz\|0x0bda\|2357"; then
         warn "Fritz USB Treiber nicht gefunden — nach Reboot prüfen"
 fi
 
-# USB-WLAN Power-Management deaktiviert lassen — verhindert hängende
-# Verbindungen bei USB-WLAN-Adaptern (z.B. Fritz AC 860) durch Autosuspend
 cat > /etc/udev/rules.d/70-usb-wlan-power.rules << 'EOF'
 ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="057c", ATTR{power/control}="on"
 ACTION=="add", SUBSYSTEM=="usb", DRIVER=="mt76x2u", ATTR{power/control}="on"
 EOF
 success "USB-WLAN Autosuspend-Fix installiert"
 
-# RTL8821CE (HP-Laptops u.a.) — bekannter Stromspar-Bug der Verbindungen
-# instabil macht / DHCP fehlschlagen lässt. Fix: tiefen Stromsparmodus
-# und ASPM für diesen Chip deaktivieren.
 if lspci -k 2>/dev/null | grep -qi "RTL8821CE"; then
     info "RTL8821CE WLAN-Chip erkannt — wende Stabilitäts-Fix an..."
     cat > /etc/modprobe.d/rtw88.conf << 'EOF'
@@ -215,9 +197,6 @@ EOF
     success "RTL8821CE Stabilitäts-Fix installiert (disable_lps_deep, disable_aspm)"
 fi
 
-# ============================================================
-# SCHRITT 2 — Hardware-Erkennung & Treiber
-# ============================================================
 step "2/10 — Hardware-Analyse & Treiber"
 
 IS_LAPTOP=false
@@ -276,7 +255,6 @@ EOF
         libvulkan1 libvulkan1:i386 \
         nvidia-vulkan-icd nvidia-vulkan-icd:i386
 
-    # envycontrol für Hybrid-Systeme (AMD + NVIDIA)
     if $HAS_AMD; then
         info "Hybrid GPU erkannt — Installiere envycontrol..."
         ENVY_DEB_URL=$(curl -sf https://api.github.com/repos/bayasdev/envycontrol/releases/latest 2>/dev/null \
@@ -296,14 +274,12 @@ except: pass
             rm -f /tmp/envycontrol.deb
             success "envycontrol installiert"
         else
-            # Fallback: pip in venv
             python3 -m venv /opt/envycontrol-venv
             /opt/envycontrol-venv/bin/pip install git+https://github.com/bayasdev/envycontrol.git 2>/dev/null || true
             ln -sf /opt/envycontrol-venv/bin/envycontrol /usr/local/bin/envycontrol
             success "envycontrol installiert (venv)"
         fi
 
-        # Hybrid-Modus als Standard setzen
         envycontrol -s hybrid 2>/dev/null || true
         success "GPU-Modus: hybrid"
     fi
@@ -341,9 +317,6 @@ fi
 
 success "GPU-Treiber eingerichtet"
 
-# ============================================================
-# SCHRITT 3 — i3 Desktop
-# ============================================================
 step "3/10 — i3 + Polybar + Rofi + Dunst + i3lock"
 
 wait_apt
@@ -369,6 +342,7 @@ apt-get install -y \
     fonts-noto-color-emoji \
     papirus-icon-theme \
     arc-theme \
+    gtk2-engines-murrine \
     qt5-style-kvantum \
     xsettingsd \
     lxpolkit \
@@ -385,7 +359,7 @@ BIBATA_DIR="/usr/share/icons/Bibata-Modern-Classic"
 if [ ! -d "$BIBATA_DIR" ]; then
     BIBATA_VERSION=$(curl -sf https://api.github.com/repos/ful1e5/Bibata_Cursor/releases/latest | python3 -c "import sys,json; print(json.load(sys.stdin).get('tag_name','v2.0.7'))" 2>/dev/null || echo "v2.0.7")
     BIBATA_URL="https://github.com/ful1e5/Bibata_Cursor/releases/download/${BIBATA_VERSION}/Bibata-Modern-Classic.tar.xz"
-    
+
     mkdir -p /usr/share/icons
     curl -L "$BIBATA_URL" -o /tmp/Bibata-Modern-Classic.tar.xz 2>/dev/null && \
         tar -xf /tmp/Bibata-Modern-Classic.tar.xz -C /usr/share/icons/ 2>/dev/null && \
@@ -396,17 +370,13 @@ else
     success "Bibata-Modern-Classic bereits vorhanden"
 fi
 
-# bluetui — Terminal Bluetooth Manager (kein blueman/GNOME)
 # ── bluetui — Terminal Bluetooth Manager ─────────────────────
 if ask_install "bluetui (Bluetooth Terminal UI)"; then
     info "Installiere System-Abhängigkeiten für Bluetooth..."
     apt-get install -y bluez dbus pkg-config libdbus-1-dev 2>/dev/null
 
     info "Lade vorkompiliertes bluetui Binary von GitHub..."
-    # Holen der neuesten Version über die GitHub-API
     BLUETUI_VERSION=$(curl -sf https://api.github.com/repos/pythops/bluetui/releases/latest | python3 -c "import sys,json; print(json.load(sys.stdin).get('tag_name','v0.8.1'))" 2>/dev/null || echo "v0.8.1")
-    
-    # URL für die nackte Binärdatei ohne tar.gz
     BLUETUI_URL="https://github.com/pythops/bluetui/releases/download/${BLUETUI_VERSION}/bluetui-x86_64-linux-musl"
 
     if curl -L "$BLUETUI_URL" -o /usr/local/bin/bluetui 2>/dev/null; then
@@ -487,20 +457,16 @@ if ! grep -q "startx" "$BASH_PROFILE" 2>/dev/null; then
     echo '[ "$(tty)" = "/dev/tty1" ] && exec startx' >> "$BASH_PROFILE"
 fi
 
-# xinitrc — kein gsettings, kein kvantum, kein GNOME
 cat > "$TARGET_HOME/.xinitrc" << 'EOF'
 #!/bin/sh
 export PATH=/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games
 
-# Theme
 export GTK_THEME=Arc-Dark
 export QT_QPA_PLATFORMTHEME=qt5ct
 export _JAVA_AWT_WM_NONREPARENTING=1
 
-# xsettingsd für GTK-Theme in X11
 xsettingsd &
 
-# DBus
 if [ -f /usr/bin/dbus-launch ]; then
     eval $(/usr/bin/dbus-launch --sh-syntax --exit-with-session)
 fi
@@ -511,6 +477,7 @@ chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.xinitrc"
 chmod +x "$TARGET_HOME/.xinitrc"
 
 success "i3 Desktop & Autostart eingerichtet"
+
 # ── Nerd Fonts ───────────────────────────────────────────────
 info "Installiere Nerd Fonts (JetBrainsMono)..."
 NERD_VERSION=$(curl -sf https://api.github.com/repos/ryanoasis/nerd-fonts/releases/latest 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin).get('tag_name','v3.2.1'))" 2>/dev/null || echo "v3.2.1")
@@ -523,10 +490,6 @@ curl -L "$NERD_URL" -o /tmp/JetBrainsMono.zip 2>/dev/null && \
     success "JetBrainsMono Nerd Font installiert" || \
     warn "Nerd Fonts Download fehlgeschlagen — manuell installieren"
 
-
-# ============================================================
-# SCHRITT 4 — Audio (PipeWire)
-# ============================================================
 step "4/10 — Audio (PipeWire)"
 
 wait_apt
@@ -543,9 +506,48 @@ sudo -u "$TARGET_USER" systemctl --user enable pipewire pipewire-pulse wireplumb
 
 success "PipeWire installiert"
 
-# ============================================================
-# SCHRITT 5 — Terminal & Apps
-# ============================================================
+# ── Kitty Terminal Konfiguration ──────────────────────────────
+info "Konfiguriere Kitty Terminal..."
+mkdir -p "$TARGET_HOME/.config/kitty"
+cat > "$TARGET_HOME/.config/kitty/kitty.conf" << 'KITTYEOF'
+# SnowFox Kitty Theme
+# Erzeugt einen edlen Kontrast, dunkler als das reguläre #1e1e2e
+background #11111b
+foreground #cdd6f4
+window_padding_width 8
+
+# Cursor
+cursor            #8139e8
+cursor_text_color #11111b
+
+# Auswahl
+selection_background #8139e8
+selection_foreground #ffffff
+
+# Farben (passend zur SnowFox-Palette)
+color0  #1e1e2e
+color1  #e05555
+color2  #5faf5f
+color3  #ff9f5e
+color4  #8139e8
+color5  #9b5ef0
+color6  #89dceb
+color7  #cdd6f4
+color8  #6c7086
+color9  #e05555
+color10 #5faf5f
+color11 #ff9f5e
+color12 #8139e8
+color13 #9b5ef0
+color14 #89dceb
+color15 #ffffff
+
+# Font
+font_family      JetBrainsMono Nerd Font
+font_size        11.0
+KITTYEOF
+success "Kitty konfiguriert"
+
 step "5/10 — Terminal & Standard-Apps"
 
 wait_apt
@@ -600,14 +602,10 @@ if ask_install "OnlyOffice"; then
     apt-get install -y onlyoffice-desktopeditors && success "OnlyOffice installiert" || warn "OnlyOffice fehlgeschlagen"
 fi
 
-# yt-dlp
 curl -sL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp \
     -o /usr/local/bin/yt-dlp && chmod +x /usr/local/bin/yt-dlp
 success "yt-dlp installiert"
 
-# ============================================================
-# SCHRITT 6 — Browser
-# ============================================================
 step "6/10 — Browser"
 
 echo ""
@@ -689,9 +687,6 @@ EOF
         warn "Kein Browser installiert" ;;
 esac
 
-# ============================================================
-# SCHRITT 7 — Steam & Gaming
-# ============================================================
 step "7/10 — Steam & Gaming"
 
 if ask_install "Steam"; then
@@ -732,16 +727,12 @@ except: pass
     fi
 fi
 
-# ============================================================
-# SCHRITT 7b — Ollama (Lokale KI)
-# ============================================================
 step "7b/10 — Ollama (Lokale KI)"
 
 if ask_install "Ollama (lokale KI, kein Modell — nur Engine)"; then
     info "Installiere Ollama..."
     curl -fsSL https://ollama.com/install.sh | sh 2>/dev/null || warn "Ollama Installation fehlgeschlagen"
 
-    # Ollama nicht automatisch starten — nur bei Bedarf via snowfox cli
     systemctl disable ollama 2>/dev/null || true
     systemctl stop ollama 2>/dev/null || true
 
@@ -749,9 +740,6 @@ if ask_install "Ollama (lokale KI, kein Modell — nur Engine)"; then
     info "Modelle installieren mit: ollama pull <modell> (z.B. ollama pull mistral)"
 fi
 
-# ============================================================
-# SCHRITT 8 — Performance & Sicherheit
-# ============================================================
 step "8/10 — Performance & Sicherheit"
 
 wait_apt
@@ -764,7 +752,6 @@ PERCENT=50
 PRIORITY=100
 EOF
 
-# Initramfs auf lz4 umstellen
 if [[ -f /etc/initramfs-tools/initramfs.conf ]]; then
     sed -i 's/^COMPRESS=.*/COMPRESS=lz4/' /etc/initramfs-tools/initramfs.conf
     update-initramfs -u 2>/dev/null || true
@@ -793,22 +780,17 @@ net.ipv6.conf.default.use_tempaddr=2
 kernel.nmi_watchdog=0
 EOF
 
-# fstab — noatime + tmpfs ohne Duplikate
 info "Optimiere fstab..."
 sed -i 's/errors=remount-ro/errors=remount-ro,noatime/g' /etc/fstab
-
-# Duplikate entfernen, einmal sauber setzen
 sed -i '/tmpfs \/tmp tmpfs/d' /etc/fstab
 echo "tmpfs /tmp tmpfs defaults,noatime,size=4G,mode=1777 0 0" >> /etc/fstab
 success "fstab optimiert (noatime, tmpfs einmalig)"
 
-# Firewall
 ufw default deny incoming  2>/dev/null || true
 ufw default allow outgoing 2>/dev/null || true
 ufw --force enable         2>/dev/null || true
 success "ufw Firewall aktiviert"
 
-# NetworkManager
 mkdir -p /etc/NetworkManager/conf.d
 cat > /etc/NetworkManager/NetworkManager.conf << 'EOF'
 [main]
@@ -826,13 +808,11 @@ EOF
 #   [device] wifi.scan-rand-mac-address=yes
 #   [connection] wifi.cloned-mac-address=stable-privacy
 
-# WiFi Powersave deaktivieren — verhindert Verbindungsabbrüche
 cat > /etc/NetworkManager/conf.d/99-snowfox-wifi-powersave.conf << 'EOF'
 [connection]
 wifi.powersave=2
 EOF
 
-# DNS-over-TLS
 mkdir -p /etc/systemd/resolved.conf.d
 cat > /etc/systemd/resolved.conf.d/snowfox.conf << 'EOF'
 [Resolve]
@@ -843,12 +823,10 @@ DNSOverTLS=opportunistic
 EOF
 systemctl enable systemd-resolved irqbalance 2>/dev/null || true
 
-# Unnötige Dienste deaktivieren
 for svc in avahi-daemon cups-browsed ModemManager colord blueman; do
     systemctl disable "$svc" 2>/dev/null || true
 done
 
-# Boot-Verzögerungen eliminieren
 systemctl mask NetworkManager-wait-online.service 2>/dev/null || true
 systemctl mask systemd-networkd-wait-online.service 2>/dev/null || true
 
@@ -856,9 +834,6 @@ sed -i 's/#HandlePowerKey=.*/HandlePowerKey=ignore/' /etc/systemd/logind.conf
 
 success "Performance & Sicherheit optimiert"
 
-# ============================================================
-# SCHRITT 9 — Plymouth & Branding
-# ============================================================
 step "9/10 — Plymouth & Boot-Screen"
 
 apt-get install -y plymouth plymouth-themes 2>/dev/null || true
@@ -896,9 +871,6 @@ plymouth-set-default-theme -R snowfox 2>/dev/null || \
 
 success "Boot-Screen bereit"
 
-# ============================================================
-# SCHRITT 10 — Konfiguration & Abschluss
-# ============================================================
 step "10/10 — Konfiguration & Finishing"
 
 CONFIG_DIR="$TARGET_HOME/.config"
@@ -934,7 +906,6 @@ success "Distro-Identität gesetzt"
 info "Aktiviere Arc-Dark + SnowFox-Farb-Overrides..."
 mkdir -p "$CONFIG_DIR/xsettingsd"
 
-# settings.ini für GTK3 + GTK4 (Basis-Theme + Cursor korrekt)
 for version in "3.0" "4.0"; do
     mkdir -p "$CONFIG_DIR/gtk-$version"
     cat > "$CONFIG_DIR/gtk-$version/settings.ini" << GEOF
@@ -949,7 +920,6 @@ gtk-decoration-layout=close,minimize,maximize:
 GEOF
 done
 
-# GTK3 — SnowFox Farb-Override (wird über Arc-Dark geladen)
 cat > "$CONFIG_DIR/gtk-3.0/gtk.css" << 'CSSEOF'
 /* SnowFox GTK3 Color Override — lädt über Arc-Dark */
 @define-color bg_color          #1e1e2e;
@@ -966,7 +936,6 @@ cat > "$CONFIG_DIR/gtk-3.0/gtk.css" << 'CSSEOF'
 @define-color warning_color     #ff9f5e;
 @define-color border_color      #3d2a5c;
 
-/* Arc-Dark interne Tokens überschreiben */
 @define-color theme_bg_color              #1e1e2e;
 @define-color theme_fg_color              #cdd6f4;
 @define-color theme_base_color            #252538;
@@ -987,7 +956,6 @@ cat > "$CONFIG_DIR/gtk-3.0/gtk.css" << 'CSSEOF'
 window, .background         { background-color: @bg_color; color: @fg_color; }
 headerbar, .titlebar        { background-color: @bg_alt_color; color: @fg_color; border-bottom: 1px solid @border_color; }
 headerbar:backdrop          { background-color: @bg_color; color: @fg_dim_color; }
-
 button                      { background-color: @bg_alt_color; color: @fg_color; border-color: @border_color; border-radius: 5px; }
 button:hover                { background-color: @bg_hover_color; border-color: @selected_bg_color; }
 button:active, button:checked { background-color: @purple_active; color: @selected_fg_color; border-color: @selected_bg_color; }
@@ -995,51 +963,40 @@ button:disabled             { background-color: @bg_color; color: @fg_dim_color;
 button.suggested-action     { background-color: @selected_bg_color; color: @selected_fg_color; border-color: @selected_bg_color; }
 button.suggested-action:hover { background-color: @purple_hover; }
 button.destructive-action   { background-color: @error_color; color: @selected_fg_color; border-color: @error_color; }
-
 entry, spinbutton           { background-color: @bg_alt_color; color: @fg_color; border-color: @border_color; border-radius: 5px; caret-color: @selected_bg_color; }
 entry:focus, spinbutton:focus { border-color: @selected_bg_color; }
 entry selection             { background-color: @selected_bg_color; color: @selected_fg_color; }
-
 menubar                     { background-color: @bg_color; color: @fg_color; }
 menubar > menuitem:hover    { background-color: @bg_hover_color; }
 menu, .menu                 { background-color: @bg_alt_color; color: @fg_color; border-color: @border_color; }
 menuitem                    { color: @fg_color; }
 menuitem:hover              { background-color: @selected_bg_color; color: @selected_fg_color; }
 menuitem:disabled           { color: @fg_dim_color; }
-
 .sidebar, placessidebar     { background-color: @bg_alt_color; color: @fg_color; border-color: @border_color; }
 .sidebar row:hover, placessidebar row:hover { background-color: @bg_hover_color; }
 .sidebar row:selected, placessidebar row:selected { background-color: @selected_bg_color; color: @selected_fg_color; }
-
 treeview, treeview.view     { background-color: @bg_color; color: @fg_color; }
 treeview:selected, treeview row:selected { background-color: @selected_bg_color; color: @selected_fg_color; }
 treeview:hover              { background-color: @bg_hover_color; }
-
 notebook > header           { background-color: @bg_alt_color; border-color: @border_color; }
 notebook > header > tabs > tab { background-color: transparent; color: @fg_dim_color; }
 notebook > header > tabs > tab:checked { background-color: @bg_color; color: @fg_color; }
 notebook > header > tabs > tab:hover { background-color: @bg_hover_color; color: @fg_color; }
-
 scrollbar trough            { background-color: @bg_alt_color; }
 scrollbar slider            { background-color: @fg_dim_color; border-radius: 8px; }
 scrollbar slider:hover      { background-color: @selected_bg_color; }
-
 tooltip                     { background-color: @bg_alt_color; color: @fg_color; border-color: @border_color; border-radius: 5px; }
 tooltip label               { color: @fg_color; }
 popover                     { background-color: @bg_alt_color; border-color: @border_color; border-radius: 8px; }
-
 list, listbox               { background-color: @bg_color; color: @fg_color; }
 list row:hover, listbox row:hover { background-color: @bg_hover_color; }
 list row:selected, listbox row:selected { background-color: @selected_bg_color; color: @selected_fg_color; }
-
 check:checked, radio:checked { background-color: @selected_bg_color; border-color: @selected_bg_color; color: @selected_fg_color; }
 switch:checked              { background-color: @selected_bg_color; border-color: @selected_bg_color; }
-
 progressbar progress        { background-color: @selected_bg_color; }
 progressbar trough          { background-color: @bg_alt_color; }
 scale trough highlight      { background-color: @selected_bg_color; }
 scale slider                { background-color: @selected_bg_color; border-color: @selected_bg_color; }
-
 paned > separator           { background-color: @bg_hover_color; }
 paned > separator:hover     { background-color: @selected_bg_color; }
 statusbar                   { background-color: @bg_color; color: @fg_dim_color; }
@@ -1047,12 +1004,10 @@ label                       { color: @fg_color; }
 label.dim-label, label:disabled { color: @fg_dim_color; }
 *:link                      { color: @purple_hover; }
 *:visited                   { color: @purple_active; }
-
 button, entry, menu, menuitem, popover,
 notebook > header > tabs > tab { border-radius: 5px; }
 CSSEOF
 
-# GTK4 — Libadwaita Farb-Token Override
 cat > "$CONFIG_DIR/gtk-4.0/gtk.css" << 'CSS4EOF'
 /* SnowFox GTK4 / Libadwaita Color Override */
 :root {
@@ -1092,43 +1047,38 @@ cat > "$CONFIG_DIR/gtk-4.0/gtk.css" << 'CSS4EOF'
 }
 CSS4EOF
 
-# GTK2 — SnowFox Farb-Override über Arc-Dark
+# GTK2 — .gtkrc-2.0 mit include (Arc-Dark lädt .mine)
+cat > "$TARGET_HOME/.gtkrc-2.0" << G2EOF
+include "/usr/share/themes/Arc-Dark/gtk-2.0/gtkrc"
+include "$TARGET_HOME/.gtkrc-2.0.mine"
+G2EOF
+
 cat > "$TARGET_HOME/.gtkrc-2.0.mine" << 'G2EOF'
 # ==============================================================================
 # ~/.gtkrc-2.0.mine - Komplettes SnowFox High-End Setup (FLAT/MODERN)
 # ==============================================================================
 
-# Die vom Arc-Theme erwarteten Farbvariablen für die Engine definieren
 gtk-color-scheme = "main_bg:#1e1e2e\nmain_fg:#cdd6f4\ntext_color:#cdd6f4\nbase_color:#1e1e2e\nselected_bg_color:#8139e8\nselected_fg_color:#ffffff\ntoolbar_bg:#1e1e2e\nmenubar_bg:#1e1e2e"
 
-# ------------------------------------------------------------------------------
-# STYLES (Definitionen)
-# ------------------------------------------------------------------------------
-
-# 1. Globaler Grundstil (Hauptfenster / Dateigitter)
 style "snowfox-colors" {
-    base[NORMAL]      = "#1e1e2e" 
-    base[ACTIVE]      = "#8139e8" 
+    base[NORMAL]      = "#1e1e2e"
+    base[ACTIVE]      = "#8139e8"
     base[INSENSITIVE] = "#1e1e2e"
-    base[SELECTED]    = "#8139e8" 
-
-    bg[NORMAL]        = "#1e1e2e" 
+    base[SELECTED]    = "#8139e8"
+    bg[NORMAL]        = "#1e1e2e"
     bg[ACTIVE]        = "#252538"
     bg[INSENSITIVE]   = "#1e1e2e"
     bg[SELECTED]      = "#8139e8"
-    bg[PRELIGHT]      = "#252538" 
-
+    bg[PRELIGHT]      = "#252538"
     text[NORMAL]      = "#cdd6f4"
     text[ACTIVE]      = "#ffffff"
     text[SELECTED]    = "#ffffff"
-
     fg[NORMAL]        = "#cdd6f4"
     fg[ACTIVE]        = "#ffffff"
     fg[SELECTED]      = "#ffffff"
     fg[PRELIGHT]      = "#ffffff"
 }
 
-# 2. Seitenleiste (Mehr Struktur & sauberer Zeilenabstand)
 style "snowfox-sidebar" {
     base[NORMAL]      = "#252538"
     base[ACTIVE]      = "#2e2e45"
@@ -1138,48 +1088,42 @@ style "snowfox-sidebar" {
     text[NORMAL]      = "#cdd6f4"
     text[SELECTED]    = "#ffffff"
     fg[NORMAL]        = "#cdd6f4"
-    
-    GtkTreeView::vertical-separator = 4
+    GtkTreeView::vertical-separator   = 4
     GtkTreeView::horizontal-separator = 4
 }
 
-# 3. Obere Leisten (Menüleiste, Toolbar) - JETZT FLACH OHNE GLANZ
 style "snowfox-leisten" {
     bg[NORMAL]   = "#1e1e2e"
     bg[ACTIVE]   = "#252538"
     bg[PRELIGHT] = "#252538"
     fg[NORMAL]   = "#cdd6f4"
-
     engine "murrine" {
-        gradient_shades   = { 1.0, 1.0, 1.0, 1.0 } # Keine Farbverläufe/Spiegelungen
-        contrast          = 0.0                     # Entfernt harte Kontrastlinien
-        lightborder_shade = 1.0                     # Entfernt die helle Glanzkante oben
-        glow_shade        = 1.0                     # Schaltet den Glow-Effekt ab
+        gradient_shades   = { 1.0, 1.0, 1.0, 1.0 }
+        contrast          = 0.0
+        lightborder_shade = 1.0
+        glow_shade        = 1.0
     }
 }
 
-# 4. Dropdown- & Kontextmenüs - KOMPLETT FLAT OHNE GLAS-GRADIENTS
 style "snowfox-menus" {
     base[NORMAL]   = "#252538"
     bg[NORMAL]     = "#252538"
-    bg[PRELIGHT]   = "#8139e8"  # Lila Auswahl beim Hovern
+    bg[PRELIGHT]   = "#8139e8"
     bg[SELECTED]   = "#8139e8"
     fg[NORMAL]     = "#cdd6f4"
     fg[PRELIGHT]   = "#ffffff"
     text[NORMAL]   = "#cdd6f4"
     text[PRELIGHT] = "#ffffff"
-
     engine "murrine" {
-        style             = FLAT                   # Verhindert den transparenten Glas-Look
-        gradient_shades   = { 1.0, 1.0, 1.0, 1.0 } # Killt Farbverläufe beim Hovern
+        style             = FLAT
+        gradient_shades   = { 1.0, 1.0, 1.0, 1.0 }
         contrast          = 0.0
         lightborder_shade = 1.0
         glow_shade        = 1.0
-        roundness         = 0                      # Scharfkantig und modern
+        roundness         = 0
     }
 }
 
-# 5. Buttons & Eingabefelder (Suchleiste, Pfadleiste) - EBENFALLS FLAT
 style "snowfox-widgets" {
     base[NORMAL]   = "#252538"
     bg[NORMAL]     = "#252538"
@@ -1187,17 +1131,15 @@ style "snowfox-widgets" {
     bg[ACTIVE]     = "#8139e8"
     fg[NORMAL]     = "#cdd6f4"
     text[NORMAL]   = "#cdd6f4"
-
     engine "murrine" {
         gradient_shades   = { 1.0, 1.0, 1.0, 1.0 }
         contrast          = 0.0
         lightborder_shade = 1.0
         glow_shade        = 1.0
-        roundness         = 3                      # Leicht abgerundete, cleane Buttons
+        roundness         = 3
     }
 }
 
-# 6. Trennbalken
 style "snowfox-trenner" {
     bg[NORMAL]        = "#8139e8"
     bg[ACTIVE]        = "#8139e8"
@@ -1205,32 +1147,23 @@ style "snowfox-trenner" {
     GtkPaned::handle-size = 2
 }
 
-# ------------------------------------------------------------------------------
-# ZUWEISUNGEN (Anwendung auf die Widgets)
-# ------------------------------------------------------------------------------
-
-class "GtkWidget" style "snowfox-colors"
-widget_class "*" style "snowfox-colors"
-
-widget_class "*<GtkMenuBar>*" style "snowfox-leisten"
-widget_class "*<GtkToolbar>*" style "snowfox-leisten"
-class "GtkPaned" style "snowfox-trenner"
-
-widget_class "*<GtkButton>*" style "snowfox-widgets"
-widget_class "*<GtkEntry>*" style "snowfox-widgets"
-
-widget_class "*<GtkMenu>*"              style:highest "snowfox-menus"
-widget_class "*<GtkMenuItem>*"          style:highest "snowfox-menus"
-widget_class "*MenuBar*.*MenuItem*"     style:highest "snowfox-menus"
-
-widget_class "*<GtkTreeView>*" style "snowfox-sidebar"
-widget_class "*<GtkSidePane>*" style "snowfox-sidebar"
-widget_class "*FmSidebar*"     style "snowfox-sidebar"
-widget_class "*FmSidePane*"    style "snowfox-sidebar"
-widget_class "*FmTreeView*"    style "snowfox-sidebar"
+class "GtkWidget"                   style "snowfox-colors"
+widget_class "*"                    style "snowfox-colors"
+widget_class "*<GtkMenuBar>*"       style "snowfox-leisten"
+widget_class "*<GtkToolbar>*"       style "snowfox-leisten"
+class "GtkPaned"                    style "snowfox-trenner"
+widget_class "*<GtkButton>*"        style "snowfox-widgets"
+widget_class "*<GtkEntry>*"         style "snowfox-widgets"
+widget_class "*<GtkMenu>*"          style:highest "snowfox-menus"
+widget_class "*<GtkMenuItem>*"      style:highest "snowfox-menus"
+widget_class "*MenuBar*.*MenuItem*" style:highest "snowfox-menus"
+widget_class "*<GtkTreeView>*"      style "snowfox-sidebar"
+widget_class "*<GtkSidePane>*"      style "snowfox-sidebar"
+widget_class "*FmSidebar*"          style "snowfox-sidebar"
+widget_class "*FmSidePane*"         style "snowfox-sidebar"
+widget_class "*FmTreeView*"         style "snowfox-sidebar"
 G2EOF
 
-# xsettingsd — Cursor korrekt
 cat > "$CONFIG_DIR/xsettingsd/xsettingsd.conf" << XEOF
 Net/ThemeName "Arc-Dark"
 Net/IconThemeName "Papirus-Dark"
@@ -1238,7 +1171,6 @@ Gtk/CursorThemeName "Bibata-Modern-Classic"
 Gtk/CursorThemeSize 24
 XEOF
 
-# ~/.icons/default — X11-Cursor für alle Apps erzwingen
 mkdir -p "$TARGET_HOME/.icons/default"
 cat > "$TARGET_HOME/.icons/default/index.theme" << IEOF
 [Icon Theme]
@@ -1247,7 +1179,6 @@ Comment=Default Cursor Theme
 Inherits=Bibata-Modern-Classic
 IEOF
 
-# ── Qt Styling ───────────────────────────────────────────────
 info "Konfiguriere Qt-Styling..."
 mkdir -p "$CONFIG_DIR/qt5ct" "$CONFIG_DIR/qt6ct"
 
@@ -1261,7 +1192,6 @@ cat > "$CONFIG_DIR/qt6ct/qt6ct.conf" << Q6EOF
 style=gtk2
 Q6EOF
 
-# ── Neofetch ─────────────────────────────────────────────────
 cat > "$CONFIG_DIR/neofetch/config.conf" << EOF
 print_info() {
     info title
@@ -1301,24 +1231,19 @@ cat > "$CONFIG_DIR/neofetch/snowfox.txt" << 'ASCIIEOF'
               ----------
 ASCIIEOF
 
-# ── Repo-Configs kopieren ────────────────────────────────────
 if [[ -d "$SCRIPT_DIR/configs" ]]; then
     cp -r "$SCRIPT_DIR/configs/"* "$CONFIG_DIR/"
     success "Konfigurationsdateien kopiert"
 
-    # Rofi
     sed -i 's/show-icons: .*/show-icons: false;/' "$CONFIG_DIR/rofi/config.rasi" 2>/dev/null
     sed -i 's/icon-theme: .*/icon-theme: "Papirus-Dark";/' "$CONFIG_DIR/rofi/config.rasi" 2>/dev/null
 
-    # Picom — optimiert, kein Fading
     if [[ -f "$CONFIG_DIR/picom.conf" ]]; then
         sed -i 's/backend = .*/backend = "glx";/' "$CONFIG_DIR/picom.conf"
         sed -i 's/shadow = .*/shadow = true;/' "$CONFIG_DIR/picom.conf"
         sed -i 's/fading = .*/fading = false;/' "$CONFIG_DIR/picom.conf"
-        sed -i 's/dock = { shadow = false; }/dock = { shadow = false; }/g' "$CONFIG_DIR/picom.conf"
     fi
 
-    # i3: Dateimanager-Shortcut auf PCManFM, Netzwerk-Shortcut auf nmtui
     I3_CONFIG_PATH="$CONFIG_DIR/i3/config"
     if [[ -f "$I3_CONFIG_PATH" ]]; then
         if grep -q '^bindsym \$mod+e' "$I3_CONFIG_PATH"; then
@@ -1334,14 +1259,102 @@ if [[ -d "$SCRIPT_DIR/configs" ]]; then
         fi
         success "i3-Shortcuts gesetzt: \$mod+e (PCManFM), \$mod+n (nmtui)"
     fi
+
+    # GTK-Overrides nach cp wiederherstellen
+    # (cp -r überschreibt ggf. gtk-3.0/gtk.css aus dem Repo)
+    info "Stelle GTK-Overrides nach Repo-Kopie sicher..."
+    cat > "$CONFIG_DIR/gtk-3.0/gtk.css" << 'CSSRESTORE'
+/* SnowFox GTK3 Color Override — lädt über Arc-Dark */
+@define-color bg_color          #1e1e2e;
+@define-color bg_alt_color      #252538;
+@define-color bg_hover_color    #2e2e45;
+@define-color fg_color          #cdd6f4;
+@define-color fg_dim_color      #6c7086;
+@define-color selected_bg_color #8139e8;
+@define-color selected_fg_color #ffffff;
+@define-color purple_hover      #9b5ef0;
+@define-color purple_active     #6a2fc0;
+@define-color error_color       #e05555;
+@define-color success_color     #5faf5f;
+@define-color warning_color     #ff9f5e;
+@define-color border_color      #3d2a5c;
+@define-color theme_bg_color              #1e1e2e;
+@define-color theme_fg_color              #cdd6f4;
+@define-color theme_base_color            #252538;
+@define-color theme_text_color            #cdd6f4;
+@define-color theme_selected_bg_color     #8139e8;
+@define-color theme_selected_fg_color     #ffffff;
+@define-color theme_tooltip_bg_color      #252538;
+@define-color theme_tooltip_fg_color      #cdd6f4;
+@define-color insensitive_bg_color        #1e1e2e;
+@define-color insensitive_fg_color        #6c7086;
+@define-color borders                     #3d2a5c;
+@define-color alt_borders                 #3d2a5c;
+@define-color sidebar_bg_color            #252538;
+@define-color sidebar_fg_color            #cdd6f4;
+@define-color link_color                  #9b5ef0;
+@define-color link_visited_color          #6a2fc0;
+window, .background         { background-color: @bg_color; color: @fg_color; }
+headerbar, .titlebar        { background-color: @bg_alt_color; color: @fg_color; border-bottom: 1px solid @border_color; }
+headerbar:backdrop          { background-color: @bg_color; color: @fg_dim_color; }
+button                      { background-color: @bg_alt_color; color: @fg_color; border-color: @border_color; border-radius: 5px; }
+button:hover                { background-color: @bg_hover_color; border-color: @selected_bg_color; }
+button:active, button:checked { background-color: @purple_active; color: @selected_fg_color; border-color: @selected_bg_color; }
+button:disabled             { background-color: @bg_color; color: @fg_dim_color; }
+button.suggested-action     { background-color: @selected_bg_color; color: @selected_fg_color; border-color: @selected_bg_color; }
+button.suggested-action:hover { background-color: @purple_hover; }
+button.destructive-action   { background-color: @error_color; color: @selected_fg_color; border-color: @error_color; }
+entry, spinbutton           { background-color: @bg_alt_color; color: @fg_color; border-color: @border_color; border-radius: 5px; caret-color: @selected_bg_color; }
+entry:focus, spinbutton:focus { border-color: @selected_bg_color; }
+entry selection             { background-color: @selected_bg_color; color: @selected_fg_color; }
+menubar                     { background-color: @bg_color; color: @fg_color; }
+menubar > menuitem:hover    { background-color: @bg_hover_color; }
+menu, .menu                 { background-color: @bg_alt_color; color: @fg_color; border-color: @border_color; }
+menuitem                    { color: @fg_color; }
+menuitem:hover              { background-color: @selected_bg_color; color: @selected_fg_color; }
+menuitem:disabled           { color: @fg_dim_color; }
+.sidebar, placessidebar     { background-color: @bg_alt_color; color: @fg_color; border-color: @border_color; }
+.sidebar row:hover, placessidebar row:hover { background-color: @bg_hover_color; }
+.sidebar row:selected, placessidebar row:selected { background-color: @selected_bg_color; color: @selected_fg_color; }
+treeview, treeview.view     { background-color: @bg_color; color: @fg_color; }
+treeview:selected, treeview row:selected { background-color: @selected_bg_color; color: @selected_fg_color; }
+treeview:hover              { background-color: @bg_hover_color; }
+notebook > header           { background-color: @bg_alt_color; border-color: @border_color; }
+notebook > header > tabs > tab { background-color: transparent; color: @fg_dim_color; }
+notebook > header > tabs > tab:checked { background-color: @bg_color; color: @fg_color; }
+notebook > header > tabs > tab:hover { background-color: @bg_hover_color; color: @fg_color; }
+scrollbar trough            { background-color: @bg_alt_color; }
+scrollbar slider            { background-color: @fg_dim_color; border-radius: 8px; }
+scrollbar slider:hover      { background-color: @selected_bg_color; }
+tooltip                     { background-color: @bg_alt_color; color: @fg_color; border-color: @border_color; border-radius: 5px; }
+tooltip label               { color: @fg_color; }
+popover                     { background-color: @bg_alt_color; border-color: @border_color; border-radius: 8px; }
+list, listbox               { background-color: @bg_color; color: @fg_color; }
+list row:hover, listbox row:hover { background-color: @bg_hover_color; }
+list row:selected, listbox row:selected { background-color: @selected_bg_color; color: @selected_fg_color; }
+check:checked, radio:checked { background-color: @selected_bg_color; border-color: @selected_bg_color; color: @selected_fg_color; }
+switch:checked              { background-color: @selected_bg_color; border-color: @selected_bg_color; }
+progressbar progress        { background-color: @selected_bg_color; }
+progressbar trough          { background-color: @bg_alt_color; }
+scale trough highlight      { background-color: @selected_bg_color; }
+scale slider                { background-color: @selected_bg_color; border-color: @selected_bg_color; }
+paned > separator           { background-color: @bg_hover_color; }
+paned > separator:hover     { background-color: @selected_bg_color; }
+statusbar                   { background-color: @bg_color; color: @fg_dim_color; }
+label                       { color: @fg_color; }
+label.dim-label, label:disabled { color: @fg_dim_color; }
+*:link                      { color: @purple_hover; }
+*:visited                   { color: @purple_active; }
+button, entry, menu, menuitem, popover,
+notebook > header > tabs > tab { border-radius: 5px; }
+CSSRESTORE
+    success "GTK3-Override sichergestellt"
 else
     warn "configs/-Verzeichnis nicht gefunden"
 fi
 
-# Skripte ausführbar machen
 find "$CONFIG_DIR" -name "*.sh" -exec chmod +x {} +
 
-# ── Wallpaper ────────────────────────────────────────────────
 [[ -d "$SCRIPT_DIR/wallpapers" ]] && \
     cp -r "$SCRIPT_DIR/wallpapers/." "$TARGET_HOME/Pictures/wallpapers/"
 
@@ -1354,7 +1367,6 @@ if [[ -n "$DEFAULT_WP" ]]; then
     info "Standard-Wallpaper gesetzt: $DEFAULT_WP"
 fi
 
-# ── Polybar — Laptop/Desktop automatisch ─────────────────────
 POLYBAR_CONF="$CONFIG_DIR/polybar/config.ini"
 if [[ -f "$POLYBAR_CONF" ]]; then
     if [[ "$IS_LAPTOP" == "true" ]]; then
@@ -1372,7 +1384,6 @@ if [[ -f "$POLYBAR_CONF" ]]; then
     fi
 fi
 
-# ── modprobe Configs ─────────────────────────────────────────
 if [[ -d "$SCRIPT_DIR/configs/modprobe" ]]; then
     cp "$SCRIPT_DIR/configs/modprobe/amdgpu.conf" /etc/modprobe.d/ 2>/dev/null || true
     cp "$SCRIPT_DIR/configs/modprobe/nvidia.conf"  /etc/modprobe.d/ 2>/dev/null || true
@@ -1380,12 +1391,10 @@ if [[ -d "$SCRIPT_DIR/configs/modprobe" ]]; then
     success "modprobe Configs installiert"
 fi
 
-# ── Skripte installieren ─────────────────────────────────────
 [[ -f "$SCRIPT_DIR/configs/powermenu.sh" ]] && \
     cp "$SCRIPT_DIR/configs/powermenu.sh" /usr/local/bin/snowfox-powermenu && \
     chmod +x /usr/local/bin/snowfox-powermenu
 
-# display.sh — mit i3 reload und Polybar-Neustart
 if [[ -f "$SCRIPT_DIR/configs/snowfox-display.sh" ]]; then
     cp "$SCRIPT_DIR/configs/snowfox-display.sh" "$CONFIG_DIR/snowfox-display.sh"
     if ! grep -q "polybar/launch.sh" "$CONFIG_DIR/snowfox-display.sh"; then
@@ -1398,7 +1407,6 @@ if [[ -f "$SCRIPT_DIR/configs/snowfox-display.sh" ]]; then
     success "snowfox-display.sh installiert"
 fi
 
-# launch.sh — mit sleep 2 und primary-Fallback
 mkdir -p "$CONFIG_DIR/polybar"
 cat > "$CONFIG_DIR/polybar/launch.sh" << 'LAUNCHEOF'
 #!/bin/bash
@@ -1426,7 +1434,6 @@ grep -q "snowfox-greeting" "$TARGET_HOME/.bashrc" 2>/dev/null || \
     printf '\n# SnowFoxOS Greeting\n[[ -x /usr/local/bin/snowfox-greeting ]] && snowfox-greeting\n' \
     >> "$TARGET_HOME/.bashrc"
 
-# ── Standard-Apps ────────────────────────────────────────────
 echo ""
 echo -e "${PURPLE}${BOLD}  Standard-Texteditor:${RESET}"
 echo -e "  1) Mousepad (Standard)"
@@ -1467,22 +1474,18 @@ chown -R "$TARGET_USER:$TARGET_USER" "$CONFIG_DIR"
 chown -R "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/Pictures/wallpapers"
 chown -R "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.icons"
 chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.gtkrc-2.0"
+chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.gtkrc-2.0.mine"
 chown "$TARGET_USER:$TARGET_USER" "$TARGET_HOME/.bash_profile"
 
-# ── DKMS-Hooks wiederherstellen ──────────────────────────────
 for hook in "${DKMS_HOOKS[@]}"; do
     [[ -f "${hook}.snowfox-bak" ]] && mv "${hook}.snowfox-bak" "$hook"
 done
 info "DKMS-Hooks wiederhergestellt"
 
-# ── Alte Kernel aufräumen ────────────────────────────────────
 info "Bereinige alte Kernel..."
 apt-get autoremove --purge -y 2>/dev/null || true
 success "Alte Kernel entfernt"
 
-# ============================================================
-# Fertig!
-# ============================================================
 echo -e "${PURPLE}${BOLD}"
 echo "  ███████╗███╗  ██╗ ██████╗ ██╗    ██╗███████╗ ██████╗ ██╗  ██╗"
 echo "  ██╔════╝████╗ ██║██╔═══██╗██║    ██║██╔════╝██╔═══██╗╚██╗██╔╝"
