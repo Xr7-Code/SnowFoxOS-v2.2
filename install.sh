@@ -397,28 +397,27 @@ else
 fi
 
 # bluetui — Terminal Bluetooth Manager (kein blueman/GNOME)
-info "Installiere bluetui..."
-BLUETUI_URL=$(curl -sf https://api.github.com/repos/pythops/bluetui/releases/latest 2>/dev/null \
-    | python3 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    for a in data.get('assets', []):
-        if 'x86_64' in a['name'] and 'linux' in a['name'] and a['name'].endswith('.tar.gz'):
-            print(a['browser_download_url'])
-            break
-except: pass
-" 2>/dev/null)
-if [[ -n "$BLUETUI_URL" ]]; then
-    curl -L "$BLUETUI_URL" -o /tmp/bluetui.tar.gz
-    tar -xzf /tmp/bluetui.tar.gz -C /tmp/
-    mv /tmp/bluetui /usr/local/bin/bluetui 2>/dev/null || \
-        find /tmp -name "bluetui" -type f -exec mv {} /usr/local/bin/bluetui \;
-    chmod +x /usr/local/bin/bluetui
-    rm -f /tmp/bluetui.tar.gz
-    success "bluetui installiert"
-else
-    warn "bluetui nicht verfügbar — Bluetooth über 'bluetoothctl' nutzbar"
+# ── bluetui — Terminal Bluetooth Manager ─────────────────────
+if ask_install "bluetui (Bluetooth Terminal UI)"; then
+    info "Installiere System-Abhängigkeiten für Bluetooth..."
+    apt-get install -y bluez dbus pkg-config libdbus-1-dev 2>/dev/null
+
+    info "Lade vorkompiliertes bluetui Binary von GitHub..."
+    # Holen der neuesten Version über die GitHub-API
+    BLUETUI_VERSION=$(curl -sf https://api.github.com/repos/pythops/bluetui/releases/latest | python3 -c "import sys,json; print(json.load(sys.stdin).get('tag_name','v0.8.1'))" 2>/dev/null || echo "v0.8.1")
+    
+    # URL für die nackte Binärdatei ohne tar.gz
+    BLUETUI_URL="https://github.com/pythops/bluetui/releases/download/${BLUETUI_VERSION}/bluetui-x86_64-linux-musl"
+
+    if curl -L "$BLUETUI_URL" -o /usr/local/bin/bluetui 2>/dev/null; then
+        chmod +x /usr/local/bin/bluetui
+        systemctl enable --now bluetooth 2>/dev/null
+        success "bluetui erfolgreich installiert!"
+    else
+        warn "Konnte Binary nicht laden. Versuche Cargo Fallback..."
+        apt-get install -y cargo 2>/dev/null
+        cargo install bluetui --root /usr/local/ 2>/dev/null && success "bluetui via Cargo installiert!" || error "bluetui Installation komplett fehlgeschlagen."
+    fi
 fi
 
 systemctl enable bluetooth
