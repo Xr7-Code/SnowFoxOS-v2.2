@@ -379,6 +379,23 @@ apt-get install -y \
     cups cups-bsd cups-client \
     printer-driver-splix
 
+# ── Bibata Cursor Theme installieren ─────────────────────────
+info "Installiere Bibata-Modern-Classic Cursor..."
+BIBATA_DIR="/usr/share/icons/Bibata-Modern-Classic"
+if [ ! -d "$BIBATA_DIR" ]; then
+    BIBATA_VERSION=$(curl -sf https://api.github.com/repos/ful1e5/Bibata_Cursor/releases/latest | python3 -c "import sys,json; print(json.load(sys.stdin).get('tag_name','v2.0.7'))" 2>/dev/null || echo "v2.0.7")
+    BIBATA_URL="https://github.com/ful1e5/Bibata_Cursor/releases/download/${BIBATA_VERSION}/Bibata-Modern-Classic.tar.xz"
+    
+    mkdir -p /usr/share/icons
+    curl -L "$BIBATA_URL" -o /tmp/Bibata-Modern-Classic.tar.xz 2>/dev/null && \
+        tar -xf /tmp/Bibata-Modern-Classic.tar.xz -C /usr/share/icons/ 2>/dev/null && \
+        rm -f /tmp/Bibata-Modern-Classic.tar.xz && \
+        success "Bibata-Modern-Classic Cursor installiert" || \
+        warn "Bibata Cursor Download fehlgeschlagen — manuell installieren"
+else
+    success "Bibata-Modern-Classic bereits vorhanden"
+fi
+
 # bluetui — Terminal Bluetooth Manager (kein blueman/GNOME)
 info "Installiere bluetui..."
 BLUETUI_URL=$(curl -sf https://api.github.com/repos/pythops/bluetui/releases/latest 2>/dev/null \
