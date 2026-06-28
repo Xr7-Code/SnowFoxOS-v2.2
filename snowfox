@@ -1353,6 +1353,53 @@ cmd_apps() {
 }
 
 # ============================================================
+# snowfox node
+# ============================================================
+cmd_node() {
+    case "$1" in
+        desktop)
+            fox "Wechsle zu Desktop-Modus..."
+            if grep -q "snowfox_launcher\|SNOWFOX_NODE_CONSOLE" "$HOME/.config/i3/config" 2>/dev/null; then
+                sed -i 's|^exec.*snowfox_launcher.*|#&|' "$HOME/.config/i3/config"
+                sed -i 's|^exec.*SNOWFOX_NODE_CONSOLE.*|#&|' "$HOME/.config/i3/config"
+                ok "Launcher aus i3-Autostart entfernt"
+            fi
+            ok "Desktop-Modus — i3 wird neu geladen"
+            i3-msg restart
+            ;;
+        server)
+            fox "Wechsle zu Server-Modus (kein X11)..."
+            ok "Wechsle zu multi-user.target..."
+            sudo systemctl isolate multi-user.target
+            ;;
+        console)
+            fox "Starte SnowFox Console Launcher..."
+            LAUNCHER="$HOME/Dokumente/SNOWFOX_NODE_CONSOLE/start.sh"
+            if [[ ! -f "$LAUNCHER" ]]; then
+                err "Launcher nicht gefunden: $LAUNCHER"
+                exit 1
+            fi
+            bash "$LAUNCHER" &
+            ok "Console Launcher gestartet"
+            ;;
+        help|"")
+            divider
+            echo -e "${PURPLE}${BOLD}  snowfox node — Modus-Wechsel${RESET}"
+            divider
+            echo -e "  ${CYAN}snowfox node desktop${RESET}   — normaler i3-Desktop, kein Launcher"
+            echo -e "  ${CYAN}snowfox node server${RESET}    — Server-Modus, kein X11"
+            echo -e "  ${CYAN}snowfox node console${RESET}   — Console Launcher starten"
+            divider
+            ;;
+        *)
+            err "Unbekannter Befehl: node $1"
+            echo -e "  Hilfe: ${CYAN}snowfox node help${RESET}"
+            exit 1
+            ;;
+    esac
+}
+
+# ============================================================
 # Dispatcher
 # ============================================================
 case "$1" in
@@ -1375,6 +1422,7 @@ case "$1" in
     webapp)    cmd_webapp "$2" "$3" "$4" ;;
     apps)      cmd_apps "$2" "$3" ;;
     network)   exec ~/.config/snowfox-network.sh ;;
+    node)      cmd_node "$2" ;;
     help|"")   cmd_help ;;
     *)
         err "Unbekannter Befehl: $1"
