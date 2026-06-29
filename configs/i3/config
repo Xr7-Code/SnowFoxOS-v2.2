@@ -48,7 +48,7 @@ exec --no-startup-id xss-lock --transfer-sleep-lock -- i3lock --nofork -c 1e1e2e
 bindsym $mod+Return exec $term
 bindsym $mod+space  exec rofi -show drun -show-icons -theme ~/.config/rofi/config.rasi
 bindsym $mod+Tab    exec rofi -show window -theme ~/.config/rofi/config.rasi
-bindsym $mod+e      exec thunar
+bindsym $mod+e      exec pcmanfm
 bindsym $mod+n      exec ~/.config/snowfox-network.sh
 bindsym $mod+w      exec ~/.config/snowfox-wallpaper.sh
 bindsym $mod+l      exec i3lock -c 1e1e2e
