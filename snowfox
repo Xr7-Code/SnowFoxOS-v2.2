@@ -103,7 +103,7 @@ cmd_update() {
     # Repo-Verzeichnis ermitteln
     REPO_DIR=""
     for candidate in \
-        "$HOME/SnowFoxOS-v2.1-i3" \
+        "$HOME/SnowFoxOS-v2.2" \
         "$HOME/SnowFoxOS" \
         "/opt/snowfoxos"
     do
@@ -637,6 +637,7 @@ cmd_help() {
     echo -e "  ${CYAN}${BOLD}snowfox webapp [add|list|open|remove]${RESET} — WebApps verwalten"
     echo -e "  ${CYAN}${BOLD}snowfox apps [list|remove]${RESET}  — installierte Rofi-Apps verwalten"
     echo -e "  ${CYAN}${BOLD}snowfox network${RESET}             — Netzwerk-Manager"
+    echo -e "  ${CYAN}${BOLD}snowfox node [desktop|server|console]${RESET} — Modus wechseln"
     echo -e "  ${CYAN}${BOLD}snowfox ai${RESET}                  — Offline-KI"
     echo -e "  ${CYAN}${BOLD}snowfox help${RESET}                — diese Hilfe"
     echo ""
@@ -1181,7 +1182,7 @@ function_reset_system() {
 
         # 4. SnowFoxOS-Originalkonfigurationen frisch aus dem Repository klonen
         echo -e "\e[34m[*]\e[0m Lade originale SnowFoxOS-Konfigurationen neu..."
-        REPO_URL="https://github.com/Xr7-Code/SnowFoxOS-v2.1-i3.git"
+        REPO_URL="https://github.com/Xr7-Code/SnowFoxOS-v2.2.git"
         TMP_DIR=$(mktemp -d)
         
         if git clone --depth=1 "$REPO_URL" "$TMP_DIR" 2>/dev/null; then
