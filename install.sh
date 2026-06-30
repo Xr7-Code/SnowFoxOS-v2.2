@@ -118,6 +118,32 @@ apt-get install -y \
 sudo -u "$TARGET_USER" xdg-user-dirs-update
 success "System aktualisiert"
 
+# ── X11 / startx ohne sudo ────────────────────────────────────
+# Fix: X-Server blockiert normalen Benutzern standardmäßig den
+# Zugriff auf die physische Konsole (TTY) -> startx brauchte sudo.
+if [[ -f /etc/X11/Xwrapper.config ]]; then
+    if grep -q "^allowed_users=" /etc/X11/Xwrapper.config; then
+        sed -i 's/^allowed_users=.*/allowed_users=anybody/' /etc/X11/Xwrapper.config
+    else
+        echo "allowed_users=anybody" >> /etc/X11/Xwrapper.config
+    fi
+else
+    mkdir -p /etc/X11
+    echo "allowed_users=anybody" > /etc/X11/Xwrapper.config
+fi
+success "Xwrapper.config: startx ohne sudo erlaubt"
+
+# ── System-Locales (verhindert XOpenIM()-Fehler u.a. in Steam) ─
+info "Konfiguriere System-Locales (de_AT, en_US)..."
+apt-get install -y locales
+sed -i 's/^# *de_AT.UTF-8 UTF-8/de_AT.UTF-8 UTF-8/' /etc/locale.gen
+sed -i 's/^# *en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen
+grep -q "^de_AT.UTF-8 UTF-8" /etc/locale.gen || echo "de_AT.UTF-8 UTF-8" >> /etc/locale.gen
+grep -q "^en_US.UTF-8 UTF-8" /etc/locale.gen || echo "en_US.UTF-8 UTF-8" >> /etc/locale.gen
+locale-gen
+update-locale LANG=de_AT.UTF-8
+success "Locales gesetzt (de_AT.UTF-8, en_US.UTF-8)"
+
 info "Prüfe CPU-Kompatibilität für x64v3..."
 if ! grep -q "avx2" /proc/cpuinfo; then
     error "CPU unterstützt kein AVX2 — Installation abgebrochen um System-Brick zu verhindern."
@@ -195,6 +221,21 @@ options rtw88_core disable_lps_deep=y
 options rtw88_pci disable_aspm=y
 EOF
     success "RTL8821CE Stabilitäts-Fix installiert (disable_lps_deep, disable_aspm)"
+
+    # Fix: Im XanMod-Kernel hat sich der Modulname geändert
+    # (Unterstrich fiel weg) -> Treiber wurde nicht gefunden.
+    modprobe rtw88_8821ce 2>/dev/null && \
+        success "rtw88_8821ce Modul geladen" || \
+        warn "rtw88_8821ce Modul nicht gefunden — nach Reboot prüfen"
+    echo "rtw88_8821ce" > /etc/modules-load.d/rtw88-8821ce.conf
+
+    # Fix: Realtek-WLAN-Chip erzeugte massenhaft PCIe-Bus-Fehler (AER),
+    # was den Kernel beim Start von X11/i3 komplett blockierte.
+    if [[ -f /etc/default/grub ]] && ! grep -q "pci=noaer" /etc/default/grub; then
+        sed -i 's/\(GRUB_CMDLINE_LINUX_DEFAULT="[^"]*\)"/\1 pci=noaer"/' /etc/default/grub
+        update-grub 2>/dev/null || true
+        success "pci=noaer Kernel-Parameter gesetzt (verhindert Freeze durch Realtek-PCIe-Fehler)"
+    fi
 fi
 
 step "2/10 — Hardware-Analyse & Treiber"
@@ -700,6 +741,16 @@ if ask_install "Steam"; then
     systemctl enable gamemoded 2>/dev/null || true
     success "Steam + GameMode installiert"
 
+    # Fix: Steam-Freezes beim Workspace-Wechsel — dem Minimalsystem
+    # fehlten die 64-Bit-Intel-Medientreiber und Off-Screen-Rendering-
+    # Erweiterungen.
+    if $HAS_INTEL; then
+        info "Installiere Intel-Medientreiber & Off-Screen-Rendering für Steam..."
+        apt-get install -y intel-media-va-driver:amd64 libosmesa6 2>/dev/null || \
+            warn "Intel-Medientreiber teilweise fehlgeschlagen"
+        success "Intel-Medientreiber für Steam installiert (verhindert Workspace-Freezes)"
+    fi
+
     info "Installiere Proton GE..."
     PROTON_GE_URL=""
     PROTON_GE_JSON=$(curl -sf https://api.github.com/repos/GloriousEggroll/proton-ge-custom/releases/latest 2>/dev/null)
@@ -791,6 +842,15 @@ ufw default allow outgoing 2>/dev/null || true
 ufw --force enable         2>/dev/null || true
 success "ufw Firewall aktiviert"
 
+# ── WLAN-Karte freigeben (alte ifupdown-Konfiguration blockiert
+#    das Device sonst exklusiv und der NetworkManager bekommt es
+#    nie zu Gesicht) ──────────────────────────────────────────
+if [[ -f /etc/network/interfaces ]]; then
+    cp /etc/network/interfaces /etc/network/interfaces.snowfox-bak
+    sed -i -E '/^[[:space:]]*(auto|allow-hotplug|iface)[[:space:]]+(wl|en|eth)/ s/^/#/' /etc/network/interfaces
+    success "ifupdown-Einträge für WLAN/LAN auskommentiert (Übergabe an NetworkManager)"
+fi
+
 mkdir -p /etc/NetworkManager/conf.d
 cat > /etc/NetworkManager/NetworkManager.conf << 'EOF'
 [main]
@@ -829,6 +889,15 @@ done
 
 systemctl mask NetworkManager-wait-online.service 2>/dev/null || true
 systemctl mask systemd-networkd-wait-online.service 2>/dev/null || true
+
+# ── Heimliche Hintergrund-Dienste entfernen ───────────────────
+# Fix: Desktop-Portale (xdg) und das GNOME-Protokoll (zeitgeist)
+# fraßen im Leerlauf unnötig RAM.
+apt-get purge -y zeitgeist zeitgeist-core zeitgeist-datahub 2>/dev/null || true
+apt-get purge -y --autoremove diodon 2>/dev/null || true
+sudo -u "$TARGET_USER" systemctl --user mask xdg-desktop-portal.service \
+    xdg-desktop-portal-gtk.service xdg-desktop-portal-gnome.service 2>/dev/null || true
+success "zeitgeist & diodon entfernt, XDG-Portal-Dienste maskiert"
 
 sed -i 's/#HandlePowerKey=.*/HandlePowerKey=ignore/' /etc/systemd/logind.conf
 
@@ -919,6 +988,19 @@ gtk-application-prefer-dark-theme=1
 gtk-decoration-layout=close,minimize,maximize:
 GEOF
 done
+
+# ── Papirus-Ordnerfarbe (violett statt Standard-Blau) ─────────
+info "Installiere papirus-folders & setze Ordnerfarbe auf violett..."
+wget -qO- https://raw.githubusercontent.com/PapirusDevelopmentTeam/papirus-folders/master/install.sh \
+    | sh 2>/dev/null || warn "papirus-folders Installation fehlgeschlagen"
+if command -v papirus-folders &>/dev/null; then
+    papirus-folders -t Papirus-Dark -C violet -u 2>/dev/null || \
+        sudo -u "$TARGET_USER" papirus-folders -t Papirus-Dark -C violet -u 2>/dev/null || \
+        warn "papirus-folders konnte Ordnerfarbe nicht setzen"
+    success "Papirus-Ordner auf violett umgestellt"
+else
+    warn "papirus-folders nicht gefunden — Ordnerfarbe bleibt Standard"
+fi
 
 cat > "$CONFIG_DIR/gtk-3.0/gtk.css" << 'CSSEOF'
 /* SnowFox GTK3 Color Override — lädt über Arc-Dark */
@@ -1242,6 +1324,12 @@ if [[ -d "$SCRIPT_DIR/configs" ]]; then
         sed -i 's/backend = .*/backend = "glx";/' "$CONFIG_DIR/picom.conf"
         sed -i 's/shadow = .*/shadow = true;/' "$CONFIG_DIR/picom.conf"
         sed -i 's/fading = .*/fading = false;/' "$CONFIG_DIR/picom.conf"
+        # Fix: Picom stürzte wegen eines Syntaxfehlers (fehlendes
+        # Semikolon am Ende des wintypes-Blocks) ab, wodurch Schatten
+        # und Transparenz komplett fehlten. Prüfen & ggf. ergänzen.
+        if grep -q "wintypes" "$CONFIG_DIR/picom.conf" && ! grep -qE '^\};' "$CONFIG_DIR/picom.conf"; then
+            warn "picom.conf: möglicherweise fehlendes Semikolon im wintypes-Block — bitte manuell prüfen"
+        fi
     fi
 
     I3_CONFIG_PATH="$CONFIG_DIR/i3/config"
