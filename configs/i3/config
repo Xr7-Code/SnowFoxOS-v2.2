@@ -117,7 +117,7 @@ bindsym $mod+Shift+5 move container to workspace $ws5
 
 # ── Floating Regeln ─────────────────────────────────────────
 for_window [class="Pavucontrol"]           floating enable, resize set 600 400
-for_window [class=".*"] floating enable
+for_window [class=".*"] tiling enable
 for_window [class="Nm-connection-editor"]  floating enable
 for_window [class="System-config-printer"] floating enable
 for_window [window_role="dialog"]          floating enable
